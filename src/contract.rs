@@ -1,4 +1,4 @@
-use cosmos_sdk_proto::ibc::applications::transfer::v1::MsgTransfer;
+use cosmos_sdk_proto::ibc::applications::transfer::v1::{MsgTransfer, MsgTransferResponse};
 use cosmos_sdk_proto::traits::Message;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
@@ -163,15 +163,73 @@ pub fn execute_mint(
 }
 
 // user sends money to contract
+// contract sends it to osmosis
 pub fn execute_fund(
-    deps: DepsMut<NeutronQuery>,
+    deps: &mut DepsMut<NeutronQuery>,
     env: Env,
     info: MessageInfo,
 ) -> NeutronResult<Response<NeutronMsg>> {
-    execute_ic_swap(deps, env, info, None)
-    // rest is done when the swap confirms
+    let funds = info.funds.get(0);
+    if funds.is_none() {
+        return Err(NeutronError::Std(StdError::generic_err(
+            "No funds sent to contract",
+        )));
+    }
 
-    // TODO handle coin already uusdc
+    let fee = min_ntrn_ibc_fee(query_min_ibc_fee(deps.as_ref())?.min_fee);
+    let (ica, connection_id) = get_ica(deps.as_ref(), &env, OSMOSIS_IC_ACCOUNT_ID)?;
+
+    let deploy_msg: MsgTransfer = MsgTransfer {
+        sender: env.contract.address.to_string(),
+        receiver: ica,
+        token: Some(cosmos_sdk_proto::cosmos::base::v1beta1::Coin {
+            denom: funds.unwrap().denom.clone(),
+            amount: funds.unwrap().amount.clone().to_string(),
+        }),
+        source_channel: "channel-186".to_string(),
+        source_port: "transfer".to_string(),
+        timeout_height: None,
+        timeout_timestamp: 0,
+    };
+    let mut buf = Vec::new();
+    buf.reserve(deploy_msg.encoded_len());
+
+    if let Err(e) = deploy_msg.encode(&mut buf) {
+        return Err(NeutronError::Std(StdError::generic_err(format!(
+            "Encode error: {}",
+            e
+        ))));
+    }
+
+    let any_msg = ProtobufAny {
+        type_url: "/ibc.applications.transfer.v1.MsgTransfer".to_string(),
+        value: Binary::from(buf),
+    };
+
+    let cosmos_msg = NeutronMsg::submit_tx(
+        connection_id,
+        OSMOSIS_IC_ACCOUNT_ID.to_string(),
+        vec![any_msg],
+        "".to_string(),
+        DEFAULT_TIMEOUT_SECONDS,
+        fee,
+    );
+
+    // We use a submessage here because we need the process message reply to save
+    // the outgoing IBC packet identifier for later.
+    let submsg = msg_with_sudo_callback(
+        deps,
+        cosmos_msg,
+        SudoPayload {
+            port_id: get_port_id(env.contract.address.as_str(), OSMOSIS_IC_ACCOUNT_ID),
+            message: "message".to_string(),
+            sender: env.contract.address.to_string(),
+            executor: "execute_fund_to_osmosis".to_string(),
+            amount: Some(funds.unwrap().amount.clone()),
+        },
+    )?;
+
+    Ok(Response::default().add_submessages(vec![submsg]))
 }
 
 // contract deploys money from osmosis to redbank
@@ -539,7 +597,7 @@ fn execute_return_funds(
             denom: "uusdc".to_string(),
             amount: amount.to_string(),
         }),
-        source_channel: "channel-76".to_string(),
+        source_channel: "channel-3515".to_string(),
         source_port: "transfer".to_string(),
         timeout_height: None,
         timeout_timestamp: 0,
@@ -555,7 +613,7 @@ fn execute_return_funds(
     }
 
     let any_msg = ProtobufAny {
-        type_url: "/cosmwasm.wasm.v1.MsgExecuteContract".to_string(),
+        type_url: "/ibc.applications.transfer.v1.MsgTransfer".to_string(),
         value: Binary::from(buf),
     };
 
@@ -847,6 +905,14 @@ fn sudo_response(
                         let error_msg = "WASMDEBUG: Error: Unknown executor";
                         api.debug(error_msg);
                         return Err(StdError::generic_err(error_msg));
+                    }
+                },
+                "/ibc.applications.transfer.v1.MsgTransfer" => match payload.executor.as_str() {
+                    "execute_fund_to_osmosis" => {
+                        let out: MsgTransferResponse = decode_message_response(&item.data)?;
+                        api.debug(format!("Transferred to osmosis: {:?}", out).as_str());
+                        execute_ic_swap(deps, env, info, None);
+                        return Ok(Response::default());
                     }
                 },
                 _ => {
