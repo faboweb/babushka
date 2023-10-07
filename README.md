@@ -1,10 +1,17 @@
-# Neutron Interchain Txs Example Contract
+# Paytex
 
-The example contract shows how to use and interact with [Interchain Txs Module](https://docs.neutron.org/neutron/modules/interchain-txs/overview).
+Simple and secure savings account.
 
-## How to test
+This is a yiel aggregator smart contract pool.
 
-1. run `make build` in the root folder of `neutron-sdk/`
-2. set up [Localnet](https://docs.neutron.org/neutron/build-and-run/localnet)
-3. cd `scripts/`
-4. `./test_intechain_txs.sh` (or `NEUTRON_DIR=/path/to/somedir/ ./test_interchain_txs.sh` if the neutron dir is not `../../neutron/`)
+## Architecture
+
+A smart contract user can pay into and receive a pool share for. The SC deploys the funds to low risk yield strategies on other chains. The SC will frequently call the yield back into the SC.
+
+## Status
+
+- Liquidity Shares (done)
+- Liquidity Deployment (done)
+- Yield generation
+- Yield calling
+- LP redemdtion

@@ -33,3 +33,4 @@ neutrond tx wasm migrate $CONTRACT $CODE_ID "$ARGS" --from babu $TXFLAG -y
 
 neutrond tx wasm execute neutron18guzurkjk9sq65xkv04yd7a5mj90u7qx36w36w09akx8zdhdagaqmvnnkx "{\"register\":{\"connection_id\":\"connection-10\", \"interchain_account_id\":\"babu_neutron_osmosis_v1\"}}" --from babu $TXFLAG
 neutrond tx wasm execute neutron18guzurkjk9sq65xkv04yd7a5mj90u7qx36w36w09akx8zdhdagaqmvnnkx "{\"fund\":{}}" --amount 1untrn --from babu $TXFLAG 
+neutrond query wasm contract-state smart neutron18guzurkjk9sq65xkv04yd7a5mj90u7qx36w36w09akx8zdhdagaqmvnnkx "{\"interchain_account_address_from_contract\":{\"interchain_account_id\":\"babu_neutron_osmosis_v1\"}}" $NODE
